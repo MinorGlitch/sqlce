@@ -16,6 +16,13 @@ std::uint32_t LogicalPageIdOf(std::span<const std::uint8_t> pageBytes)
     return infrastructure::ReadUInt32LE(pageBytes, LogicalPageIdOffset) & LogicalPageIdMask;
 }
 
+bool PageMatches(std::span<const std::uint8_t> pageBytes, std::uint8_t expectedType, std::uint32_t expectedLogicalId)
+{
+    return pageBytes.size() > PageTypeOffset
+        && pageBytes[PageTypeOffset] == expectedType
+        && LogicalPageIdOf(pageBytes) == expectedLogicalId;
+}
+
 std::uint32_t ReadPackedSlot(std::span<const std::uint8_t> pageBytes, std::size_t baseOffset, std::size_t slotIndex)
 {
     const std::size_t wordIndex = (LvBitsPerSlot * slotIndex) / (LvSlotsPerWord * LvBitsPerSlot);
@@ -62,10 +69,7 @@ const LogicalPageResolver::LogicalPageMap& LogicalPageResolver::_mapFor(const do
     if (mapAPhysicalPage.has_value())
     {
         const std::span<const std::uint8_t> mapABytes = storage.PageBytes(*mapAPhysicalPage);
-        const bool looksLikeMapA = mapABytes.size() > PageTypeOffset
-            && mapABytes[PageTypeOffset] == MapAPageType
-            && LogicalPageIdOf(mapABytes) == MapAPageLogicalId;
-        if (!looksLikeMapA)
+        if (!PageMatches(mapABytes, MapAPageType, MapAPageLogicalId))
         {
             throw std::runtime_error("header page Map A pointer does not reference a valid Map A page");
         }
@@ -87,16 +91,8 @@ const LogicalPageResolver::LogicalPageMap& LogicalPageResolver::_mapFor(const do
         };
 
         const std::uint32_t mapBSlotZero = ReadPackedSlot(mapABytes, MapAPageDataOffset, 0);
-        if (mapBSlotZero == 0 || mapBSlotZero >= pageCount)
-        {
-            throw std::runtime_error("Map A slot 0 does not reference a valid Map B page");
-        }
-
-        const std::span<const std::uint8_t> mapBZeroBytes = storage.PageBytes(mapBSlotZero);
-        const bool looksLikeMapB = mapBZeroBytes.size() > PageTypeOffset
-            && mapBZeroBytes[PageTypeOffset] == MapBPageType
-            && LogicalPageIdOf(mapBZeroBytes) == MapBPageLogicalId;
-        if (!looksLikeMapB)
+        if (mapBSlotZero == 0 || mapBSlotZero >= pageCount
+            || !PageMatches(storage.PageBytes(mapBSlotZero), MapBPageType, MapBPageLogicalId))
         {
             throw std::runtime_error("Map A slot 0 does not reference a valid Map B page");
         }

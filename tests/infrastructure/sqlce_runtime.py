@@ -40,6 +40,7 @@ class _Dispatcher:
             "list_tables": self._list_tables,
             "table_schema": self._table_schema,
             "row_count": self._row_count,
+            "read_table": self._read_table,
         }
 
     def dispatch(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
@@ -238,7 +239,7 @@ class _Dispatcher:
     def _clr_value_to_python(value: Any) -> Any:
         import System
 
-        if value is None or isinstance(value, System.DBNull) or value == System.DBNull.Value:
+        if value is None or isinstance(value, System.DBNull):
             return None
         return value
 
@@ -291,6 +292,60 @@ class _Dispatcher:
         connection = self._handles[handle_id]
         rows = self._run_query(connection, f"SELECT COUNT(*) AS ROW_COUNT FROM {table_name}")
         return int(rows[0]["ROW_COUNT"])
+
+    @staticmethod
+    def _clr_field_to_python(value: Any) -> Any:
+        import System
+
+        if value is None or isinstance(value, System.DBNull):
+            return None
+        if isinstance(value, System.Guid):
+            import uuid
+
+            return uuid.UUID(str(value))
+        if isinstance(value, System.DateTime):
+            import datetime
+
+            return datetime.datetime(
+                value.Year,
+                value.Month,
+                value.Day,
+                value.Hour,
+                value.Minute,
+                value.Second,
+                value.Millisecond * 1000,
+            )
+        if isinstance(value, System.Decimal):
+            import decimal
+
+            return decimal.Decimal(str(value))
+        if isinstance(value, System.Array[System.Byte]):
+            return bytes(bytearray(value))
+        if isinstance(value, System.Boolean):
+            return bool(value)
+        if isinstance(value, (System.Byte, System.SByte, System.Int16, System.Int32, System.Int64)):
+            return int(value)
+        if isinstance(value, (System.Single, System.Double)):
+            return float(value)
+        if isinstance(value, System.String):
+            return str(value)
+        return value
+
+    def _read_table(self, handle_id: int, table_name: str) -> Sequence[Dict[str, Any]]:
+        connection = self._handles[handle_id]
+        command = connection.CreateCommand()
+        command.CommandText = f"SELECT * FROM {table_name}"
+        reader = command.ExecuteReader()
+        rows = []
+        try:
+            while reader.Read():
+                row = {}
+                for index in range(reader.FieldCount):
+                    row[reader.GetName(index)] = self._clr_field_to_python(reader.GetValue(index))
+                rows.append(row)
+        finally:
+            reader.Close()
+        return rows
 
     def _execute_batch(self, handle_id: int, operations: Sequence[tuple]) -> None:
         sqlserverce = self._load()

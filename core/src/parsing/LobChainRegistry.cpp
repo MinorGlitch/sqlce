@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "sdf/domain/InvalidSdfException.hpp"
 #include "sdf/domain/PageSize.hpp"
 #include "sdf/infrastructure/BinaryReader.hpp"
 #include "sdf/parsing/SdfFormat.hpp"
@@ -165,7 +166,7 @@ std::shared_ptr<domain::ILazyLobSource> LobChainRegistry::ResolveLob(
         return std::make_shared<ChainLobSource>(_storage, std::move(pageNumbers), totalLength);
     }
 
-    return std::make_shared<InlineLobSource>(std::vector<std::uint8_t>(inlineTail.begin(), inlineTail.end()));
+    throw domain::InvalidSdfException("LOB value chain could not be fully resolved");
 }
 
 }

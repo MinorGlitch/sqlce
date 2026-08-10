@@ -3,6 +3,7 @@
 #include <optional>
 #include <utility>
 
+#include "sdf/domain/InvalidSdfException.hpp"
 #include "sdf/parsing/SdfFormat.hpp"
 
 namespace sdf::parsing
@@ -93,8 +94,13 @@ std::vector<std::uint8_t> RowFragmentReassembler::AssembleRowBytes(
 
         if (!matched)
         {
-            break;
+            throw domain::InvalidSdfException("row continuation chain could not be fully resolved");
         }
+    }
+
+    if (nextPageNumber.has_value() && hops >= MaxRowContinuationHops)
+    {
+        throw domain::InvalidSdfException("row continuation chain exceeded maximum hop count");
     }
 
     return assembled;

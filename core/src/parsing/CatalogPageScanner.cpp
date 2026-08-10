@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "sdf/domain/InvalidSdfException.hpp"
 #include "sdf/infrastructure/BinaryReader.hpp"
 #include "sdf/parsing/PageView.hpp"
 #include "sdf/parsing/SdfFormat.hpp"
@@ -289,8 +290,13 @@ std::vector<std::vector<std::uint8_t>> CatalogPageScanner::CollectCatalogRows(
 
                 if (!matched)
                 {
-                    break;
+                    throw domain::InvalidSdfException("catalog row continuation chain could not be fully resolved");
                 }
+            }
+
+            if (nextPageNumber.has_value() && hops >= MaxRowContinuationHops)
+            {
+                throw domain::InvalidSdfException("catalog row continuation chain exceeded maximum hop count");
             }
 
             rows.push_back(std::move(assembled));

@@ -1,7 +1,6 @@
 #include "sdf/parsing/LogicalPageResolver.hpp"
 
-#include <stdexcept>
-
+#include "sdf/domain/InvalidSdfException.hpp"
 #include "sdf/infrastructure/BinaryReader.hpp"
 #include "sdf/parsing/SdfFormat.hpp"
 
@@ -71,7 +70,7 @@ const LogicalPageResolver::LogicalPageMap& LogicalPageResolver::_mapFor(const do
         const std::span<const std::uint8_t> mapABytes = storage.PageBytes(*mapAPhysicalPage);
         if (!PageMatches(mapABytes, MapAPageType, MapAPageLogicalId))
         {
-            throw std::runtime_error("header page Map A pointer does not reference a valid Map A page");
+            throw domain::InvalidSdfException("header page Map A pointer does not reference a valid Map A page");
         }
 
         map.physicalPageByLogicalId[MapAPageLogicalId] = *mapAPhysicalPage;
@@ -94,7 +93,7 @@ const LogicalPageResolver::LogicalPageMap& LogicalPageResolver::_mapFor(const do
         if (mapBSlotZero == 0 || mapBSlotZero >= pageCount
             || !PageMatches(storage.PageBytes(mapBSlotZero), MapBPageType, MapBPageLogicalId))
         {
-            throw std::runtime_error("Map A slot 0 does not reference a valid Map B page");
+            throw domain::InvalidSdfException("Map A slot 0 does not reference a valid Map B page");
         }
 
         map.physicalPageByLogicalId[MapBPageLogicalId] = mapBSlotZero;

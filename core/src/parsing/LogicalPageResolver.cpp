@@ -1,6 +1,7 @@
 #include "sdf/parsing/LogicalPageResolver.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -87,40 +88,56 @@ const LogicalPageResolver::LogicalPageMap& LogicalPageResolver::_mapFor(const do
         }
     }
 
-    const std::optional<std::size_t> mapAPhysicalPage = pickByGeneration(MapAPageLogicalId);
+    std::optional<std::size_t> mapAPhysicalPage;
+    if (pageCount > 0)
+    {
+        const std::span<const std::uint8_t> headerBytes = storage.PageBytes(0);
+        if (headerBytes.size() >= HeaderMapAPhysicalPageOffset + sizeof(std::uint32_t))
+        {
+            const std::uint32_t candidate = infrastructure::ReadUInt32LE(headerBytes, HeaderMapAPhysicalPageOffset);
+            if (candidate < pageCount)
+            {
+                mapAPhysicalPage = candidate;
+            }
+        }
+    }
     if (mapAPhysicalPage.has_value())
     {
         const std::span<const std::uint8_t> mapABytes = storage.PageBytes(*mapAPhysicalPage);
-        if (mapABytes.size() > PageTypeOffset && mapABytes[PageTypeOffset] == MapAPageType)
+        const bool looksLikeMapA = mapABytes.size() > PageTypeOffset
+            && mapABytes[PageTypeOffset] == MapAPageType
+            && LogicalPageIdOf(mapABytes) == MapAPageLogicalId;
+        if (!looksLikeMapA)
         {
-            std::uint32_t mapBRangeStart = MapBRangeFirstLogicalId;
-            for (std::size_t mapASlotIndex = 2;; ++mapASlotIndex)
+            throw std::runtime_error("header page Map A pointer does not reference a valid Map A page");
+        }
+        std::uint32_t mapBRangeStart = MapBRangeFirstLogicalId;
+        for (std::size_t mapASlotIndex = 2;; ++mapASlotIndex)
+        {
+            const std::size_t wordIndex = (LvBitsPerSlot * mapASlotIndex) / (LvSlotsPerWord * LvBitsPerSlot);
+            const std::size_t wordByteOffset = MapAPageDataOffset + wordIndex * LvWordBytes;
+            if (wordByteOffset + LvWordBytes > mapABytes.size())
             {
-                const std::size_t wordIndex = (LvBitsPerSlot * mapASlotIndex) / (LvSlotsPerWord * LvBitsPerSlot);
-                const std::size_t wordByteOffset = MapAPageDataOffset + wordIndex * LvWordBytes;
-                if (wordByteOffset + LvWordBytes > mapABytes.size())
-                {
-                    break;
-                }
-
-                const std::uint32_t mapBPhysicalPage = ReadPackedSlot(mapABytes, MapAPageDataOffset, mapASlotIndex);
-                if (mapBPhysicalPage != 0 && mapBPhysicalPage < pageCount)
-                {
-                    const std::span<const std::uint8_t> mapBBytes = storage.PageBytes(mapBPhysicalPage);
-                    for (std::size_t mapBSlotIndex = 0; mapBSlotIndex < MapBRangeLogicalIdSpan; ++mapBSlotIndex)
-                    {
-                        const std::uint32_t physicalPage = ReadPackedSlot(mapBBytes, MapBPageDataOffset, mapBSlotIndex);
-                        if (physicalPage == 0 || physicalPage >= pageCount)
-                        {
-                            continue;
-                        }
-                        map.physicalPageByLogicalId[mapBRangeStart + static_cast<std::uint32_t>(mapBSlotIndex)]
-                            = physicalPage;
-                    }
-                }
-
-                mapBRangeStart += static_cast<std::uint32_t>(MapBRangeLogicalIdSpan);
+                break;
             }
+
+            const std::uint32_t mapBPhysicalPage = ReadPackedSlot(mapABytes, MapAPageDataOffset, mapASlotIndex);
+            if (mapBPhysicalPage != 0 && mapBPhysicalPage < pageCount)
+            {
+                const std::span<const std::uint8_t> mapBBytes = storage.PageBytes(mapBPhysicalPage);
+                for (std::size_t mapBSlotIndex = 0; mapBSlotIndex < MapBRangeLogicalIdSpan; ++mapBSlotIndex)
+                {
+                    const std::uint32_t physicalPage = ReadPackedSlot(mapBBytes, MapBPageDataOffset, mapBSlotIndex);
+                    if (physicalPage == 0 || physicalPage >= pageCount)
+                    {
+                        continue;
+                    }
+                    map.physicalPageByLogicalId[mapBRangeStart + static_cast<std::uint32_t>(mapBSlotIndex)]
+                        = physicalPage;
+                }
+            }
+
+            mapBRangeStart += static_cast<std::uint32_t>(MapBRangeLogicalIdSpan);
         }
     }
 

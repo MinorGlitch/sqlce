@@ -57,6 +57,7 @@ constexpr std::uint32_t LogicalPageIdMask = 0xFFFFFu;
 
 constexpr std::uint32_t HeaderPageLogicalId = 0;
 constexpr std::uint32_t MapAPageLogicalId = 1;
+constexpr std::size_t HeaderMapAPhysicalPageOffset = 44;
 constexpr std::uint8_t MapAPageType = 0x10;
 constexpr std::size_t MapAPageDataOffset = 16;
 constexpr std::size_t MapBPageDataOffset = 16;

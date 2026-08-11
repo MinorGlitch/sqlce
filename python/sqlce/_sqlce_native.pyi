@@ -46,7 +46,8 @@ class LazyLob:
             value is empty).
 
         Complexity:
-            O(L) total, O(1) per chunk.
+            O(L) total, O(1) per chunk, O(1) for len() on the
+            returned iterator.
         """
         ...
 
@@ -55,11 +56,14 @@ class LazyLobChunkIterator:
     """
     Lazy iterator over the chunks (LOB pages) of a LazyLob, produced
     by LazyLob.read_chunks(). Each chunk is read from the storage
-    cache or from disk only when requested via __next__().
+    cache or from disk only when requested via __next__(). len()
+    returns the total chunk count (page count of the LOB chain,
+    fixed at creation) without reading chunk data.
     """
 
     def __iter__(self) -> "LazyLobChunkIterator": ...
     def __next__(self) -> bytes: ...
+    def __len__(self) -> int: ...
 
 
 ColumnValue = Union[

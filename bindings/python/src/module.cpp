@@ -162,6 +162,11 @@ public:
         return result;
     }
 
+    std::size_t Len() const
+    {
+        return _range.ChunkCount();
+    }
+
 private:
     domain::LazyLobChunkRange _range;
     domain::LazyLobChunkRange::Iterator _current;
@@ -262,7 +267,8 @@ PYBIND11_MODULE(_sqlce_native, module)
         .def(
             "__iter__",
             [](LazyLobChunkIterator& self) -> LazyLobChunkIterator& { return self; })
-        .def("__next__", &LazyLobChunkIterator::Next);
+        .def("__next__", &LazyLobChunkIterator::Next)
+        .def("__len__", &LazyLobChunkIterator::Len);
 
     py::class_<domain::LazyLob>(module, LazyLobClassName, LazyLobDoc)
         .def(LazyLobReadName, readLob)

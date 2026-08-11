@@ -80,6 +80,11 @@ LazyLobChunkRange::Iterator LazyLobChunkRange::end() const
     return Iterator(_source, _source->ChunkCount());
 }
 
+std::size_t LazyLobChunkRange::ChunkCount() const
+{
+    return _source->ChunkCount();
+}
+
 LazyLob::LazyLob(std::shared_ptr<const ILazyLobSource> source, bool isText, bool compressed)
     : _source(std::move(source)), _isText(isText), _compressed(compressed)
 {

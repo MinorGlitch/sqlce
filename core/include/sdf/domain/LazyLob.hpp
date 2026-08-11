@@ -49,6 +49,7 @@ public:
 
     [[nodiscard]] Iterator begin() const;
     [[nodiscard]] Iterator end() const;
+    [[nodiscard]] std::size_t ChunkCount() const;
 
 private:
     std::shared_ptr<const ILazyLobSource> _source;

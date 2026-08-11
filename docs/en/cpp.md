@@ -1,20 +1,23 @@
 # C++ API
 
-Parser for .sdf files (SQL Server Compact). Reads tables, schema, and rows.
+Lib for parsing `.sdf` files (SQL Server Compact). Read-only: `list_tables`, `table_schema`, `read_table`/`iterate_table`, `row_count`, file metadata, decryption.
 
 ## Build
 
-CMake, C++20, ninja/gcc or msvc. The `SQLCE_BUILD_PYTHON_BINDINGS` flag is not needed for plain C++, it is `OFF` by default.
-
-Builds the `libsqlce` library and the `sdf_dump` executable (`main.cpp`, dumps all .sdf files from a folder).
+| Parameter                     | Value                                                                                                         |
+|-------------------------------|---------------------------------------------------------------------------------------------------------------|
+| Build system                  | CMake                                                                                                         |
+| Standard                      | C++20                                                                                                         |
+| `SQLCE_BUILD_PYTHON_BINDINGS` | `OFF` by default; not required for C++                                                                        |
+| Target                        | `libsqlce` (object library, static or shared via `BUILD_SHARED_LIBS`)                                         |
+| Binary                        | `sdf_dump` ([main.cpp](../../core/main.cpp), dumps all `.sdf` files from the directory passed as an argument) |
 
 ## Example
 
-```cpp
+```c++
 #include "sdf/application/SqlceDatabase.hpp"
 
 sdf::application::SqlceDatabase db("file.sdf");
-// or with a password
 sdf::application::SqlceDatabase db("file.sdf", "password");
 
 for (auto& name : db.ListTables()) { ... }
@@ -23,25 +26,118 @@ auto schema = db.TableSchema("MyTable");
 auto rows = db.ReadTable("MyTable");
 ```
 
-## SqlceDatabase (sdf/application/SqlceDatabase.hpp)
+## SqlceDatabase ([sdf/application/SqlceDatabase.hpp](../../core/include/sdf/application/SqlceDatabase.hpp))
 
-- `ListTables() -> vector<string>`
-- `TableSchema(name) -> vector<ColumnSchema>`
-- `ReadTable(name) -> vector<Row>`
+Opening the file immediately parses the system catalog and resolves the data pages of every table; row bodies are not read — only their location map is built. Rows are decoded lazily when accessed. The object stores the logical page map (Map A / Map B) and catalog once for its entire lifetime.
 
-## ColumnSchema (sdf/application/ColumnSchema.hpp)
+| Method / Constructor                                  | Description                                                                                                                                                                                                                                | Complexity / Features                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+|-------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SqlceDatabase(path)`                                 | Open an unencrypted file.                                                                                                                                                                                                                  | Throws `InvalidPasswordException` if the file is password-protected. O(P/1527 + K + T), where **P** is the number of pages in the file (the number of Map B pages grows with P because each Map B page indexes a range of 1527 logical identifiers, and every file page has a logical identifier, including table data pages), **K** is the number of heap pages in the system catalog, and **T** is the number of tables (one root page per table).                                                                                                                                                                                              |
+| `SqlceDatabase(path, password)`                       | Open a password-protected file. The password is checked sequentially using the page 0 verifier against all 4 supported algorithms (`TripleDesSha1`, `Aes128Sha1`, `Aes128Sha256`, `Aes256Sha512`) until a match is found.                  | The file itself stores the encryption algorithm, available through `GetEncryptionMode`, but the constructor does not rely on it. The result is available through `ResolvedEncryptionMode()` and may theoretically differ from the mode declared in the file. The password must be no more than 40 bytes after UTF-16LE encoding. Algorithm resolution requires up to 4 attempts, each consisting of password hashing for key derivation followed by decryption of one verifier block on page 0. After that, catalog parsing is the same as in the passwordless constructor: O(P/1527 + K + T) (see the description of that overload for details). |
+| `ListTables() -> vector<string>`                      | Names of all user tables in lexicographical order.                                                                                                                                                                                         | O(T), without accessing the file — the list is collected by the constructor.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `TableSchema(name) -> vector<ColumnSchema>`           | Column descriptions in ascending ordinal order.                                                                                                                                                                                            | O(C), without reading pages.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `IterateTable(name) -> TableRowRange`                 | Lazy range: rows are decoded one at a time, without materializing the entire table.                                                                                                                                                        | The returned object holds non-owning pointers to the `SqlceDatabase` data and must not outlive the original object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ReadTable(name) -> vector<Row>`                      | Equivalent to materializing `IterateTable(name)` into a vector.                                                                                                                                                                            | O(R*C) in time and memory.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `RowCount(name) -> uint32_t`                          | If the table root page contains a recognizable cardinality field, the value is read directly; otherwise, a full pass over `IterateTable` is performed, counting rows without decoding column values.                                       | O(1), without reading rows, if the cardinality field is recognized; otherwise O(R). The field is read from the file on every call and is not cached.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GetEncryptionMode() -> EncryptionMode`               | The mode declared on page 0, regardless of whether a password was provided or matched.                                                                                                                                                     | O(1), computed when opening.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `static GetEncryptionMode(path) -> EncryptionMode`    | The same mode without creating a `SqlceDatabase` object.                                                                                                                                                                                   | A separate file descriptor is used; only page 0 is read, then the descriptor is closed immediately.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ResolvedEncryptionMode() -> EncryptionMode`          | The algorithm actually confirmed by the password when opening.                                                                                                                                                                             | `None` for an unencrypted file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GetFormatVersion() -> FormatVersion`                 | Format version at a fixed offset on page 0.                                                                                                                                                                                                | O(1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `static GetFormatVersion(path) -> FormatVersion`      | Format version without creating a `SqlceDatabase` object.                                                                                                                                                                                  | Reads only page 0.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ExportDecrypted() -> vector<uint8_t>`                | Full file contents with encryption removed. Each page is decrypted; on page 0 of the result, the encryption mode, verifier, key-param, provider-info, and “was encrypted” flag fields are zeroed, and the page 0 checksum is recalculated. | If `ResolvedEncryptionMode() == None`, pages are returned unchanged and the page 0 fields are not modified. O(P) in the number of pages; the entire result is held in memory simultaneously.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `static VerifyPassword(path, password) -> bool`       | Checks the password against all 4 algorithms without opening the file as a database; stops at the first match.                                                                                                                             | Only page 0 is read from disk, once, regardless of the number of attempts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `static VerifyPassword(path, password, mode) -> bool` | Checks one specific algorithm.                                                                                                                                                                                                             | `EncryptionMode::None` is invalid — in this case, `UnsupportedEncryptionModeException` is thrown.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-Fields: `ordinal`, `name`, `typeName`, `declaredSize`, `precision`, `scale` (the last two are `optional`).
+## ColumnSchema ([sdf/application/ColumnSchema.hpp](../../core/include/sdf/application/ColumnSchema.hpp))
 
-## Row (sdf/domain/Row.hpp)
+An immutable snapshot at the time `TableSchema()` is called.
 
-Pairs of (column name, ColumnValue). `Values()` returns all values, `Find(name)` looks up a single value.
+| Field          | Description                                                                                                                                                                                                            |
+|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ordinal`      | Column position in the table, starting at 1, in ascending catalog ordinal order.                                                                                                                                       |
+| `name`         | Column name.                                                                                                                                                                                                           |
+| `typeName`     | `string_view`: `"int"`, `"nvarchar"`, `"ntext"`, `"image"`, `"uniqueidentifier"`, etc.                                                                                                                                 |
+| `declaredSize` | `optional<uint32_t>`: for NVarChar/NChar, the number of characters; for Binary/VarBinary, the number of bytes; for Image, the constant `0x3FFFFFFF`; for NText, the constant `0x1FFFFFFF`; for other types, `nullopt`. |
+| `precision`    | `optional<uint8_t>`: fixed values by type or values from the catalog for Numeric; otherwise `nullopt`.                                                                                                                 |
+| `scale`        | `optional<uint8_t>`: fixed values by type or values from the catalog for Numeric; otherwise `nullopt`.                                                                                                                 |
 
-## ColumnValue (sdf/domain/ColumnValue.hpp)
+## Row ([sdf/domain/Row.hpp](../../core/include/sdf/domain/Row.hpp))
 
-Variant: `null`, `int64`, `uint64`, `double`, `bool`, `string`, `bytes`, `DateTimeValue`, `NumericValue`, `Guid`. `ToDisplayString()` returns a display-ready string.
+An ordered list of pairs (column name, `ColumnValue`), in ascending dense ordinal order.
 
-## Exceptions (sdf/domain/EncryptionMode.hpp)
+| Method       | Description                                                                         |
+|--------------|-------------------------------------------------------------------------------------|
+| `Values()`   | Returns the entire list.                                                            |
+| `Find(name)` | Searches for one pair and returns a pointer (`nullptr` if the column is not found). |
 
-- `UnsupportedEncryptionModeException` - the encryption mode is not supported (currently only two modes are supported, both used by version 4.0)
-- `InvalidPasswordException` - incorrect password
+## ColumnValue ([sdf/domain/ColumnValue.hpp](../../core/include/sdf/domain/ColumnValue.hpp))
+
+`std::variant`:
+
+| Value Type                                   | Representation         | Description                                                                                   |
+|----------------------------------------------|------------------------|-----------------------------------------------------------------------------------------------|
+| `NullValue`                                  | `NullValue`            | NULL (the row presence mask bit is set).                                                      |
+| TinyInt, SmallInt, Int, BigInt               | `int64_t` / `uint64_t` | Integer values.                                                                               |
+| Real, Float, Money                           | `double`               | For Money: `money = raw_int64 / 10000`.                                                       |
+| Bit                                          | `bool`                 | Boolean value.                                                                                |
+| NVarChar                                     | `string`               | Variable-length string; may be Latin1-compressed according to the var-directory flag.         |
+| NChar                                        | `string`               | Fixed-length string; always UTF-16LE; the compression flag does not apply to it.              |
+| Binary, VarBinary, RowVersion                | `vector<uint8_t>`      | Binary values.                                                                                |
+| Any column type outside the known code range | `vector<uint8_t>`      | Unrecognized type.                                                                            |
+| DateTime                                     | `DateTimeValue`        | Constructed from a day counter starting at 1900-01-01 and ticks (1/300 second) from midnight. |
+| Numeric                                      | `NumericValue`         | Reconstructed from precision, scale, sign, and little-endian unscaled catalog digits.         |
+| UniqueIdentifier                             | `Guid`                 | 16 bytes, interpreted as `bytes_le`.                                                          |
+| NText, Image                                 | `LazyLob`              | Not read during row decoding.                                                                 |
+
+| Method              | Description                                                   |
+|---------------------|---------------------------------------------------------------|
+| `IsNull()`          | Checks for `NullValue`.                                       |
+| `ToDisplayString()` | Text representation of the value as-is, for output/debugging. |
+
+## LazyLob ([sdf/domain/LazyLob.hpp](../../core/include/sdf/domain/LazyLob.hpp))
+
+A lazy reference to an LOB value (NText or Image) in a table row. Stores the read source (LOB chain pages), not the data itself.
+
+| Method                              | Description                                                                                                                                                                                                   |
+|-------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `TotalLength() -> size_t`           | Total value length in bytes.                                                                                                                                                                                  |
+| `IsText() -> bool`                  | `true` for NText, `false` for Image.                                                                                                                                                                          |
+| `ReadBytes() -> vector<uint8_t>`    | Reads the entire value as bytes.                                                                                                                                                                              |
+| `ReadText() -> string`              | Reads the entire value as a string (after UTF-16LE or Latin1 decoding, depending on the value compression flag); applicable only to NText.                                                                    |
+| `ReadChunks() -> LazyLobChunkRange` | Reads in chunks without decoding or assembling the result into a single string. For non-inline values, one element per page in the LOB chain; for inline values, one element (or none if the value is empty). |
+| `LazyLobChunkRange::ChunkCount()`   | Returns the total number of chunks (fixed at creation) without reading their contents.                                                                                                                        |
+
+| Complexity Parameter | Value                                                                                                                                                  |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Read complexity      | O(L), where L is the value length in bytes.                                                                                                            |
+| `PageBytes` accesses | For non-inline values, the number of accesses equals the number of pages in the LOB chain (chunk = payload of one LOB page minus the LOB page header). |
+
+## EncryptionMode ([sdf/domain/EncryptionMode.hpp](../../core/include/sdf/domain/EncryptionMode.hpp))
+
+| Mode            | Description                                        |   |             |
+|-----------------|----------------------------------------------------|---|-------------|
+| `None`          | No encryption.                                     |   |             |
+| `TripleDesSha1` | Triple DES, 24-byte key = SHA-1(UTF-16LE(password) |   | key_param). |
+| `Aes128Sha1`    | AES-128, key = SHA-1(...).                         |   |             |
+| `Aes128Sha256`  | AES-128, key = SHA-256(...).                       |   |             |
+| `Aes256Sha512`  | AES-256, key = SHA-512(...).                       |   |             |
+
+## FormatVersion ([sdf/domain/FormatVersion.hpp](../../core/include/sdf/domain/FormatVersion.hpp))
+
+| Version      | Description                                                     |
+|--------------|-----------------------------------------------------------------|
+| `Unknown`    | The value in the file does not match any known format constant. |
+| `SqlCe30`    | SQL Server Compact 3.0.                                         |
+| `SqlCe35`    | SQL Server Compact 3.5.                                         |
+| `SqlCe35Sp2` | SQL Server Compact 3.5 SP2.                                     |
+| `SqlCe40`    | SQL Server Compact 4.0.                                         |
+
+## Exceptions
+
+| Exception                                                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `UnsupportedEncryptionModeException` (`sdf/domain/EncryptionMode.hpp`) | Key derivation was requested for `EncryptionMode::None`, which is not a key-derivation algorithm. The only public path that can produce this exception is `SqlceDatabase::VerifyPassword(path, password, EncryptionMode::None)`.                                                                                                                                                                                                                                                                                                 |
+| `InvalidPasswordException` (`sdf/domain/EncryptionMode.hpp`)           | The password did not match any of the 4 supported algorithms when opening the file, or the file is encrypted and no password was provided. After a `SqlceDatabase` object has been successfully created, this exception can no longer be raised by any of its methods: algorithm resolution and verification occur once in the constructor. It is not thrown if the password exceeds the maximum length (40 bytes UTF-16LE); in that case, an ordinary length-related exception is thrown instead of `InvalidPasswordException`. |
+| `InvalidSdfException` (`sdf/domain/InvalidSdfException.hpp`)           | The `.sdf` file is structurally invalid: shorter than one page; the logical page map (Map A / Map B) is missing or corrupted; the chain of row fragments, catalog rows, or LOB values cannot be fully resolved or exceeds the internal limit on continuation-page transitions. `what()` contains a textual description of the specific cause.                                                                                                                                                                                    |
+
+Example usage: [sdf_dump](../../core/main.cpp)

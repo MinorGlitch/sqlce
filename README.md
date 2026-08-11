@@ -17,7 +17,7 @@ Analysis of the format's internal structure based on decompiled SQL CE component
 Browser version (WebAssembly, runs locally - the file never leaves your tab): [boykopovar.github.io/sqlce](https://boykopovar.github.io/sqlce/)
 
 - `core/` - C++ parser implementation
-- `bindings/` - Bindings for the C++ library to other languages
+- `bindings/` - Bindings for the C++ library to python and wasm
 - `python/sqlce/` - Python API
 - `research/` - Experimental scripts
 
@@ -38,7 +38,7 @@ for table_name in db.list_tables():
         print(row)
 ```
 
-The current implementation supports reading the list of tables, table schemas, and table contents (including password-protected databases). It is implemented in C++.
+The current implementation supports reading the list of tables, table schemas, and table contents (including password-protected databases). Supports removing file encryption (using a password).
 
 ### Testing
 
@@ -50,9 +50,9 @@ The tests use a locally installed SQL CE engine (via ODBC) to generate `.sdf` fi
 
 ### Documentation
 
-The documentation is currently concise but includes usage examples and tests.
-
 [Documentation](https://github.com/boykopovar/sqlce/blob/main/docs/en/python.md)
+
+There are examples (see docs), [golden tests](tests/) and [stubs](python/sqlce/_sqlce_native.pyi) with docstrings.
 
 
 [Code Style Conventions](docs/CONVENTIONS.md) (Pull requests are welcome.)

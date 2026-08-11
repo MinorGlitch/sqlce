@@ -247,8 +247,8 @@ def test_iterate_table_lazy_lob_read_chunks_matches_read(
     rows = list(db.iterate_table(LAZY_MULTI_LOB_TABLE_SPEC.name))
     row = next(r for r in rows if r["Id"] == 2)
 
-    text_chunks: List[bytes] = row["Content"].read_chunks()
-    binary_chunks: List[bytes] = row["Payload"].read_chunks()
+    text_chunks: List[bytes] = list(row["Content"].read_chunks())
+    binary_chunks: List[bytes] = list(row["Payload"].read_chunks())
 
     assert all(isinstance(chunk, bytes) for chunk in text_chunks)
     assert all(isinstance(chunk, bytes) for chunk in binary_chunks)

@@ -41,6 +41,10 @@ public:
     InvalidPasswordException() : std::runtime_error("password verification failed")
     {
     }
+
+    explicit InvalidPasswordException(const std::string& message) : std::runtime_error(message)
+    {
+    }
 };
 
 }

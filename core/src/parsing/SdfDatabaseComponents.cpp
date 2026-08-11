@@ -37,7 +37,7 @@ OpenedStorage OpenStorage(const std::string& path, const std::string& password)
     {
         if (mode != domain::EncryptionMode::None)
         {
-            throw std::runtime_error("file is password-protected, password required");
+            throw domain::InvalidPasswordException("file is password-protected, password required");
         }
         return OpenedStorage{std::make_unique<infrastructure::FileStorage>(path), mode, domain::EncryptionMode::None, version};
     }

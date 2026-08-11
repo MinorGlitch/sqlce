@@ -54,6 +54,19 @@ jobs:
         with:
           path: site
 
+      - name: Archive wasm demo
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          pkg="wasm_demo-${version:-dev}"
+          mkdir -p "$pkg"
+          cp -r site/. "$pkg/"
+          zip -r "${pkg}.zip" "$pkg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm-demo
+          path: wasm_demo-*.zip
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

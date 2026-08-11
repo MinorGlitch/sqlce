@@ -12,6 +12,7 @@
 #include "sdf/application/TableRowRange.hpp"
 #include "sdf/domain/EncryptionMode.hpp"
 #include "sdf/domain/FormatVersion.hpp"
+#include "sdf/domain/InvalidSdfException.hpp"
 #include "sdf/domain/LazyLob.hpp"
 #include "sdf/domain/Row.hpp"
 
@@ -91,6 +92,7 @@ constexpr char ScaleAttrName[] = "scale";
 
 constexpr char UnsupportedEncryptionModeErrorName[] = "UnsupportedEncryptionModeError";
 constexpr char InvalidPasswordErrorName[] = "InvalidPasswordError";
+constexpr char InvalidSdfErrorName[] = "InvalidSdfError";
 
 constexpr char LazyLobClassName[] = "LazyLob";
 constexpr char LazyLobDoc[] = "Ленивое LOB-значение (NText/Image), читаемое по требованию.";
@@ -169,6 +171,8 @@ void RegisterExceptions(py::module_& module)
         module, UnsupportedEncryptionModeErrorName, PyExc_ValueError);
     static const py::exception<domain::InvalidPasswordException> invalidPasswordError(
         module, InvalidPasswordErrorName, PyExc_ValueError);
+    static const py::exception<domain::InvalidSdfException> invalidSdfError(
+        module, InvalidSdfErrorName, PyExc_ValueError);
 
     py::register_exception_translator([](std::exception_ptr lastException) {
         try
@@ -185,6 +189,10 @@ void RegisterExceptions(py::module_& module)
         catch (const domain::InvalidPasswordException& error)
         {
             PyErr_SetString(invalidPasswordError.ptr(), error.what());
+        }
+        catch (const domain::InvalidSdfException& error)
+        {
+            PyErr_SetString(invalidSdfError.ptr(), error.what());
         }
     });
 }

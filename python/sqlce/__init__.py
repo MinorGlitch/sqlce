@@ -2,6 +2,7 @@ from sqlce._sqlce_native import ColumnSchema
 from sqlce._sqlce_native import EncryptionMode
 from sqlce._sqlce_native import FormatVersion
 from sqlce._sqlce_native import InvalidPasswordError
+from sqlce._sqlce_native import InvalidSdfError
 from sqlce._sqlce_native import LazyLob
 from sqlce._sqlce_native import SqlceDatabase
 from sqlce._sqlce_native import TableRowIterator
@@ -12,6 +13,7 @@ __all__ = [
     "EncryptionMode",
     "FormatVersion",
     "InvalidPasswordError",
+    "InvalidSdfError",
     "LazyLob",
     "SqlceDatabase",
     "TableRowIterator",

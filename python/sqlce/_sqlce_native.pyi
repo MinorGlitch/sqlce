@@ -59,6 +59,10 @@ class InvalidPasswordError(ValueError):
     ...
 
 
+class InvalidSdfError(ValueError):
+    ...
+
+
 class ColumnSchema:
     @property
     def ordinal(self) -> int: ...

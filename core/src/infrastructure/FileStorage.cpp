@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
+#include <sdf/domain/InvalidSdfException.hpp>
 
 #include "sdf/domain/EncryptionMode.hpp"
 #include "sdf/domain/PageSize.hpp"
@@ -22,7 +23,7 @@ std::vector<std::uint8_t> ReadFirstPageRaw(const std::string& path)
     file.read(reinterpret_cast<char*>(page.data()), static_cast<std::streamsize>(domain::PageSize));
     if (!file)
     {
-        throw std::runtime_error("file is smaller than one page, not a valid .sdf: " + path);
+        throw domain::InvalidSdfException("file is smaller than one page, not a valid .sdf: " + path);
     }
 
     return page;
@@ -60,7 +61,7 @@ void FileStorage::Open(const std::string& path)
 
     if (static_cast<std::size_t>(size) % domain::PageSize != 0)
     {
-        throw std::runtime_error("file size is not a multiple of page size, not a valid .sdf: " + path);
+        throw domain::InvalidSdfException("file size is not a multiple of page size, not a valid .sdf: " + path);
     }
 
     _pageCount = static_cast<std::size_t>(size) / domain::PageSize;

@@ -33,20 +33,33 @@ class LazyLob:
         """
         ...
 
-    def read_chunks(self) -> List[bytes]:
+    def read_chunks(self) -> "LazyLobChunkIterator":
         """
         Reads the value in parts, without decoding and without
-        assembling it into a single string.
+        assembling it into a single string. Chunks are read lazily,
+        one per __next__() call, not all at once.
 
         Returns:
-            A list of bytes. For a non-inline value - one element per
-            page of the LOB chain. For an inline value - a list with
-            one element (or an empty list if the value is empty).
+            An iterator over bytes. For a non-inline value - one
+            element per page of the LOB chain. For an inline value -
+            an iterator yielding one element (or nothing, if the
+            value is empty).
 
         Complexity:
             O(L) total, O(1) per chunk.
         """
         ...
+
+
+class LazyLobChunkIterator:
+    """
+    Lazy iterator over the chunks (LOB pages) of a LazyLob, produced
+    by LazyLob.read_chunks(). Each chunk is read from the storage
+    cache or from disk only when requested via __next__().
+    """
+
+    def __iter__(self) -> "LazyLobChunkIterator": ...
+    def __next__(self) -> bytes: ...
 
 
 ColumnValue = Union[

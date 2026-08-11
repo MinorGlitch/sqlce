@@ -99,6 +99,10 @@ constexpr char LazyLobDoc[] = "Ленивое LOB-значение (NText/Image)
 constexpr char LazyLobReadName[] = "read";
 constexpr char LazyLobReadChunksName[] = "read_chunks";
 
+constexpr char LazyLobChunkIteratorClassName[] = "LazyLobChunkIterator";
+constexpr char LazyLobChunkIteratorDoc[]
+    = "Lazy iterator over the chunks (LOB pages) of a LazyLob, produced by LazyLob.read_chunks().";
+
 constexpr char TableRowIteratorClassName[] = "TableRowIterator";
 constexpr char TableRowIteratorDoc[]
     = "Lazy row-by-row iterator over a table, produced by SqlceDatabase.iterate_table().";
@@ -136,6 +140,32 @@ private:
     application::TableRowRange _range;
     application::TableRowRange::Iterator _current;
     application::TableRowRange::Iterator _end;
+};
+
+class LazyLobChunkIterator
+{
+public:
+    explicit LazyLobChunkIterator(const domain::LazyLob& lob)
+        : _range(lob.ReadChunks()), _current(_range.begin()), _end(_range.end())
+    {
+    }
+
+    py::bytes Next()
+    {
+        if (_current == _end)
+        {
+            throw py::stop_iteration();
+        }
+        const std::vector<std::uint8_t>& chunk = *_current;
+        py::bytes result(reinterpret_cast<const char*>(chunk.data()), chunk.size());
+        ++_current;
+        return result;
+    }
+
+private:
+    domain::LazyLobChunkRange _range;
+    domain::LazyLobChunkRange::Iterator _current;
+    domain::LazyLobChunkRange::Iterator _end;
 };
 
 std::vector<py::dict> ReadTableAsDicts(const application::SqlceDatabase& database, const std::string& tableName)
@@ -228,15 +258,16 @@ PYBIND11_MODULE(_sqlce_native, module)
         return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
     };
 
+    py::class_<LazyLobChunkIterator>(module, LazyLobChunkIteratorClassName, LazyLobChunkIteratorDoc)
+        .def(
+            "__iter__",
+            [](LazyLobChunkIterator& self) -> LazyLobChunkIterator& { return self; })
+        .def("__next__", &LazyLobChunkIterator::Next);
+
     py::class_<domain::LazyLob>(module, LazyLobClassName, LazyLobDoc)
         .def(LazyLobReadName, readLob)
         .def(LazyLobReadChunksName, [](const domain::LazyLob& lob) {
-            py::list result;
-            for (const std::vector<std::uint8_t>& chunk : lob.ReadChunks())
-            {
-                result.append(py::bytes(reinterpret_cast<const char*>(chunk.data()), chunk.size()));
-            }
-            return result;
+            return LazyLobChunkIterator(lob);
         })
         .def("__eq__", [readLob](const domain::LazyLob& lob, const py::object& other) -> py::object {
             if (py::isinstance<domain::LazyLob>(other))

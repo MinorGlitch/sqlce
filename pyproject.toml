@@ -3,9 +3,9 @@ requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "sqlce"
-version = "0.3.1"
-description = "Cross-platform lib for reading SQL Server CE (.sdf)"
+name = "openaudiocopy-sqlce"
+version = "0.3.1.post1"
+description = "SQLCE reader with strict import validation for OpenAudioCopy"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [

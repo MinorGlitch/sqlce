@@ -30,7 +30,7 @@ void TestPageBounds()
     std::array<std::uint8_t, PageSize + 1> buffer{};
     for (std::size_t size = 0; size < PageSize; ++size)
     {
-        RequireThrows<InvalidSdfException>([&] { PageView page(std::span(buffer).first(size)); },
+        RequireThrows<InvalidSdfException>([&] { PageView page{std::span(buffer).first(size)}; },
             "short page was accepted");
     }
     RequireThrows<InvalidSdfException>([&] { PageView page(buffer); }, "oversized page was accepted");

@@ -26,10 +26,14 @@ struct ContinuedRowSlice
     std::size_t continuationSlotIndex;
 };
 
+// OpenAudioCopy imports must reject damaged live rows rather than omit them.
+enum class RowValidationMode { StrictImport, CompatibleRecovery };
+
 class PageView
 {
 public:
-    explicit PageView(std::span<const std::uint8_t> bytes);
+    explicit PageView(std::span<const std::uint8_t> bytes,
+        RowValidationMode mode = RowValidationMode::StrictImport);
 
     [[nodiscard]] std::uint8_t PageType() const;
     [[nodiscard]] std::uint8_t OwnerObjectId() const;
@@ -44,6 +48,7 @@ public:
 
 private:
     std::span<const std::uint8_t> _bytes;
+    RowValidationMode _mode;
 };
 
 }

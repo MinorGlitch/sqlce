@@ -40,7 +40,7 @@ void TestPageBounds()
     for (std::uint32_t count = 0; count <= SlotCountFieldMask; ++count)
     {
         WriteUInt32(bytes, SlotCountFieldOffset, count);
-        PageView page(bytes);
+        PageView page(bytes, RowValidationMode::CompatibleRecovery);
         if (count > SlotArrayBaseIndex + 1)
         {
             RequireThrows<InvalidSdfException>([&] { (void)page.SlotCount(); }, "excessive slot count was accepted");
@@ -64,7 +64,7 @@ void TestPageBounds()
     bytes[128] = 7;
     bytes[129] = 8;
     bytes[130] = 9;
-    PageView page(bytes);
+    PageView page(bytes, RowValidationMode::CompatibleRecovery);
     Require(page.IsDataPage(), "data page type changed");
     const auto rows = page.Rows();
     Require(rows.size() == 1 && rows[0].slotIndex == 0 && rows[0].bytes.size() == 3
@@ -79,6 +79,21 @@ void TestPageBounds()
     Require(page.Rows().empty() && page.RowsWithContinuation().empty(), "ghost slot was not skipped");
     WriteUInt32(bytes, slotDwordOffset, 4090 | (64 << RecordLengthFieldShift));
     Require(page.Rows().empty() && page.RowsWithContinuation().empty(), "row recovery behavior changed");
+
+    PageView strict(bytes);
+    for (std::uint32_t slot : {std::uint32_t(0), std::uint32_t(4 << RecordLengthFieldShift),
+        std::uint32_t(4090 | (64 << RecordLengthFieldShift))})
+    {
+        WriteUInt32(bytes, slotDwordOffset, slot);
+        RequireThrows<InvalidSdfException>([&] { (void)strict.Rows(); }, "strict reader skipped invalid row");
+        RequireThrows<InvalidSdfException>([&] { (void)strict.RowsWithContinuation(); },
+            "strict continuation reader skipped invalid row");
+    }
+    WriteUInt32(bytes, slotDwordOffset, 0x01ffffff);
+    Require(strict.Rows().empty() && strict.RowsWithContinuation().empty(), "strict reader rejected ghost slot");
+    WriteUInt32(bytes, slotDwordOffset, 100 | (7 << RecordLengthFieldShift) | (2u << 24));
+    Require(strict.Rows().size() == 1 && strict.RowsWithContinuation().size() == 1,
+        "strict reader rejected valid row");
 }
 
 }

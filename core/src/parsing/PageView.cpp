@@ -21,7 +21,8 @@ std::uint32_t ReadU32(const std::span<const std::uint8_t> bytes, const std::size
 
 }
 
-PageView::PageView(std::span<const std::uint8_t> bytes) : _bytes(bytes)
+PageView::PageView(std::span<const std::uint8_t> bytes, RowValidationMode mode)
+    : _bytes(bytes), _mode(mode)
 {
     if (bytes.size() != domain::PageSize)
     {
@@ -70,7 +71,8 @@ namespace
 
 template <typename TBaseFn, typename TLengthFn>
 std::vector<RowSlice> CollectRows(
-    std::span<const std::uint8_t> bytes, std::size_t slotCount, TBaseFn&& computeBase, TLengthFn&& computeLength)
+    std::span<const std::uint8_t> bytes, std::size_t slotCount, RowValidationMode mode,
+    TBaseFn&& computeBase, TLengthFn&& computeLength)
 {
     std::vector<RowSlice> result;
     result.reserve(slotCount);
@@ -97,6 +99,10 @@ std::vector<RowSlice> CollectRows(
         const auto lengthResult = computeLength(recordLenField);
         if (!lengthResult.has_value())
         {
+            if (mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("unflagged slot has no complete row payload");
+            }
             continue;
         }
         const std::size_t recordLength = *lengthResult;
@@ -104,6 +110,10 @@ std::vector<RowSlice> CollectRows(
         const std::size_t start = computeBase(recordOffset);
         if (start > bytes.size() || recordLength > bytes.size() - start)
         {
+            if (mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("row payload outside page");
+            }
             continue;
         }
 
@@ -118,7 +128,7 @@ std::vector<RowSlice> CollectRows(
 std::vector<RowSlice> PageView::Rows() const
 {
     return CollectRows(
-        _bytes, SlotCount(),
+        _bytes, SlotCount(), _mode,
         [](std::size_t recordOffset) { return recordOffset + RowHeaderLength; },
         [](std::uint32_t recordLenField) -> std::optional<std::size_t>
         {
@@ -161,22 +171,38 @@ std::vector<ContinuedRowSlice> PageView::RowsWithContinuation() const
         const std::uint32_t recordLenField = (slotDword >> RecordLengthFieldShift) & RecordLengthFieldMask;
         if (recordLenField < RecordLengthFieldBias)
         {
+            if (_mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("unflagged slot has invalid row length");
+            }
             continue;
         }
         const std::size_t recordLength = recordLenField - RecordLengthFieldBias;
         if (recordLength == 0)
         {
+            if (_mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("unflagged slot has no complete row payload");
+            }
             continue;
         }
 
         const std::size_t start = recordOffset + RowHeaderLength;
         if (start > _bytes.size() || recordLength > _bytes.size() - start)
         {
+            if (_mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("row payload outside page");
+            }
             continue;
         }
 
         if (recordOffset + RowContinuationDwordOffset + SlotEntryLength > domain::PageSize)
         {
+            if (_mode == RowValidationMode::StrictImport)
+            {
+                throw domain::InvalidSdfException("continuation header outside page");
+            }
             continue;
         }
         const std::uint32_t continuationDword = ReadU32(_bytes, recordOffset + RowContinuationDwordOffset);
